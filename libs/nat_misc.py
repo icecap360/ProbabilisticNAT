@@ -5,6 +5,7 @@ import torch
 from einops import rearrange
 from torch.nn import functional as F
 
+from pdb import set_trace as bp
 
 def add_gumbel_noise(t, temperature, device):
     return t + torch.Tensor(temperature * np.random.gumbel(size=t.shape)).to(device)
@@ -65,19 +66,39 @@ class NATSchedule(object):
 
         fmap_size = 16
         seq_len = fmap_size * fmap_size
-
         mysampler = True
+        alternateGrid = False
         if mysampler:
             vocab_size = 1024
             ids = torch.randint(0, vocab_size, (_n_samples, seq_len), device=device)
-            n_groups = 4
+            num_rows = 2;
+            num_cols = 2;
+            n_groups = num_rows*num_cols
+            if alternateGrid:
+                # alternates number of columns and rows
+                n_groups *= 2
             group2indices = {}
-            start_ind = 0
-            for g in range(n_groups):
-                group2indices[g] = list(
-                    range(start_ind, (g + 1) * (seq_len // n_groups))
-                )
-                start_ind = (g + 1) * (seq_len // n_groups)
+            for c in range(num_cols):
+                for r in range(num_rows):
+                    # first two conditions split horizontally, latter two splits vertically
+                    group2indices[r+c*num_rows] = [ind for ind in list(range(0,seq_len)) if
+                        ( np.mod(ind, fmap_size) < fmap_size//num_cols * (c+1) and
+                          np.mod(ind, fmap_size) >= fmap_size//num_cols * (c) and
+                          ind < seq_len//num_rows * (r+1) and
+                          ind >= seq_len//num_rows * (r) ) ]
+            if alternateGrid:
+                # repeat above but switch columns and rows, and adding offset in index
+                temp = num_cols
+                num_cols = num_rows
+                num_rows = temp
+                for c in range(num_cols):
+                    for r in range(num_rows):
+                        # first two conditions split horizontally, latter two splits vertically
+                        group2indices[r+c*num_rows+n_groups/2] = [ind for ind in list(range(0,seq_len)) if
+                            ( np.mod(ind, fmap_size) < fmap_size//num_cols * (c+1) and
+                              np.mod(ind, fmap_size) >= fmap_size//num_cols * (c) and
+                              ind < seq_len//num_rows * (r+1) and
+                              ind >= seq_len//num_rows * (r) ) ]
             samp_temp = 1.0
         else:
             ids = torch.full(
