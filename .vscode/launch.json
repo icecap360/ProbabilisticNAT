@@ -13,7 +13,7 @@
             "justMyCode": false
         },
         {
-            "name": "train",
+            "name": "eval (bad)",
             "type": "debugpy",
             "request": "launch",
             "program": "train.py",
@@ -23,7 +23,7 @@
             "justMyCode": false
         },
         {
-            "name": "Train AutoNAT Distributed",
+            "name": "eval",
             "type": "python",
             "request": "launch",
             "module": "torch.distributed.run",
@@ -50,7 +50,36 @@
                 "CUDA_VISIBLE_DEVICES": "2"
             },
             "console": "integratedTerminal",
-            "justMyCode": true,
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "train",
+            "type": "python",
+            "request": "launch",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "module": "torch.distributed.run",
+            "args": [
+                "--nproc_per_node=1",
+                "--rdzv_backend=c10d",
+                "--rdzv_endpoint=localhost:0",
+                "train.py",
+                "--config",
+                "configs/AutoNAT_L.yaml",
+                "--mode",
+                "pretrain",
+                "--beta_alpha_beta",
+                "12",
+                "3",
+            ],
+            "env": {
+                "ACCELERATE_MIXED_PRECISION": "fp16",
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
             "cwd": "${workspaceFolder}"
         }
     ]
