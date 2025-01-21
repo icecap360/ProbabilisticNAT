@@ -1,8 +1,9 @@
 train:
   n_steps: 500000
-  batch_size: 2048
-  log_interval: 50
+  batch_size: 8
+  log_interval: 5
   save_interval: 5000
+  accumulation_steps: 16
 optimizer:
   name: 'adamw'
   lr: 0.0004
@@ -27,6 +28,6 @@ muse:
   smoothing: 0.1
 dataset:
   name: 'imagenet256_features'
-  path: 'assets/imagenet256_vq_features'
+  path: '/pub3/qasim/probnat/imagenet256_vq_features/'
   cfg: True
   p_uncond: 0.15

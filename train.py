@@ -182,7 +182,7 @@ def train(config, args):
         res = _cond + scale * (_cond - _uncond)
         return res
 
-    def train_step(_batch):
+    def train_step(_batch, accumulation_steps):
         _metrics = dict()
         optimizer.zero_grad()
         with torch.no_grad():
@@ -209,6 +209,41 @@ def train(config, args):
         train_state.step += 1
         return dict(
             lr=train_state.optimizer.param_groups[0]["lr"],
+            **{k: v.value for k, v in metric_logger.meters.items()},
+        )
+
+        _metrics = dict()
+        optimizer.zero_grad()
+        loss_accumulated = 0.0
+        n_groups = _batch[0].shape[0] // accumulation_steps
+        for step in range(accumulation_steps):
+            with torch.no_grad():
+                _z = _batch[0][(step * n_groups) : ((step + 1) * n_groups), :]
+                context = _batch[1][(step * n_groups) : ((step + 1) * n_groups), :]
+            loss, masked_token_ratio = LSimple(_z, nnet, schedule, context=context)
+            loss_accumulated += loss.item()
+            metric_logger.update(masked_token_ratio=masked_token_ratio)
+            accelerator.backward(loss.mean() / accumulation_steps)
+
+        optimizer.step()
+        metric_logger.update(loss=loss_accumulated / accumulation_steps)
+        lr_scheduler.step(train_state.step)
+        train_state.ema_update(config.get("ema_rate", 0.9999))
+        metric_logger.update(
+            loss_scaler=(
+                accelerator.scaler.get_scale()
+                if accelerator.scaler is not None
+                else 1.0
+            )
+        )
+        metric_logger.update(
+            grad_norm=utils.get_grad_norm_(optimizer.param_groups[0]["params"])
+        )
+
+        train_state.step += 1
+        return dict(
+            lr=train_state.optimizer.param_groups[0]["lr"],
+            accumulated_loss=loss_accumulated / accumulation_steps,
             **{k: v.value for k, v in metric_logger.meters.items()},
         )
 
@@ -454,14 +489,14 @@ def train(config, args):
             data_time_start = time.time()
             batch = next(data_generator)
             if isinstance(batch, list):
-                batch = tree_map(lambda x: x.to(device), next(data_generator))
+                batch = tree_map(lambda x: x.to(device), batch)  # next(data_generator)
             else:
                 batch = {
                     k: v.to(device) if isinstance(v, torch.Tensor) else v
                     for k, v in batch.items()
                 }
             metric_logger.update(data_time=time.time() - data_time_start)
-            metrics = train_step(batch)
+            metrics = train_step(batch, config.train.accumulation_steps)
 
             if (
                 train_state.step % config.train.save_interval == 0

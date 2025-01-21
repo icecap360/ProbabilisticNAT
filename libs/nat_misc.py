@@ -1,4 +1,5 @@
 import math
+import random
 
 import numpy as np
 import torch
@@ -48,6 +49,39 @@ class NATSchedule(object):
             label_smoothing=self.smoothing,
         )
 
+    def create_random_index_groups(self, seq_len, n_groups):
+        """
+        Creates randomly distributed groups of indices.
+
+        Args:
+            seq_len: The total number of indices (e.g., length of a sequence).
+            n_groups: The desired number of groups.
+
+        Returns:
+            A dictionary where keys are group indices (0 to n_groups-1) and values
+            are lists of randomly assigned indices.
+            Returns None if n_groups is greater than seq_len
+        """
+
+        if n_groups > seq_len:
+            return None
+        all_indices = list(range(seq_len))
+        random.shuffle(all_indices)  # Shuffle the indices randomly
+
+        group2indices = {}
+        indices_per_group = seq_len // n_groups
+        remainder = seq_len % n_groups
+
+        start_index = 0
+        for g in range(n_groups):
+            num_indices_in_group = indices_per_group + (1 if g < remainder else 0)
+            group2indices[g] = all_indices[
+                start_index : start_index + num_indices_in_group
+            ]
+            start_index += num_indices_in_group
+
+        return group2indices
+
     @torch.no_grad()
     def generate(
         self,
@@ -66,19 +100,43 @@ class NATSchedule(object):
         fmap_size = 16
         seq_len = fmap_size * fmap_size
 
-        mysampler = True
+        mysampler = False
         if mysampler:
-            vocab_size = 1024
-            ids = torch.randint(0, vocab_size, (_n_samples, seq_len), device=device)
-            n_groups = 4
-            group2indices = {}
-            start_ind = 0
-            for g in range(n_groups):
-                group2indices[g] = list(
-                    range(start_ind, (g + 1) * (seq_len // n_groups))
-                )
-                start_ind = (g + 1) * (seq_len // n_groups)
             samp_temp = 1.0
+            vocab_size = 1024
+            cfg_scale = manual_cfg[0]
+
+            # Sample the initial set of ids randomly
+            # ids = torch.randint(0, vocab_size, (_n_samples, seq_len), device=device)
+
+            # Sample the initial set of ids by taking the argmax of an empty image.
+            ids = torch.full(
+                (_n_samples, seq_len), self.mask_ind, dtype=torch.long, device=device
+            )
+            logits = nnet(ids, **kwargs, scale=cfg_scale)
+            ids = torch.distributions.Categorical(
+                logits=logits / max(samp_temp, 1e-4)
+            ).sample()
+            # Because this initialization requires inference, decrement the number of remaining steps
+            gen_steps = gen_steps - 1
+
+            n_groups = 2
+            spacing = 2  # 1
+
+            scan_order = "grid"
+            if scan_order == "random":
+                # Assign groups randomly
+                group2indices = self.create_random_index_groups(seq_len, n_groups)
+            else:
+                # Assign groups in a grid
+                group2indices = {}
+                start_ind = 0
+                for g in range(n_groups):
+                    group2indices[g] = list(
+                        range(start_ind, (g + 1) * (seq_len // n_groups), spacing)
+                    )
+                    start_ind = (g + 1) * (seq_len // n_groups)
+
         else:
             ids = torch.full(
                 (_n_samples, seq_len), self.mask_ind, dtype=torch.long, device=device
@@ -87,9 +145,12 @@ class NATSchedule(object):
         for step in range(gen_steps):
             if mysampler:
                 i_group = step % n_groups
+                if scan_order == "random" and i_group == 0 and step > 1:
+                    group2indices = self.create_random_index_groups(seq_len, n_groups)
                 indices_to_update = group2indices[i_group]
 
                 cfg_scale = manual_cfg[step]
+                ids[:, indices_to_update] = self.mask_ind
                 logits = nnet(ids, **kwargs, scale=cfg_scale)
 
                 sampled_ids = torch.distributions.Categorical(
