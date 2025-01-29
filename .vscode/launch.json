@@ -1,0 +1,99 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "extract_imagenet_feature",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "extract_imagenet_feature.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "eval (bad)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "train.py",
+            "args": ["--config", "configs/AutoNAT_L.yaml", "--gen_steps", "8", 
+            "--searched_strategy", "configs/AutoNAT_L-T8_strategy.yaml", "--pretrained_path", "assets/nnet_ema.pth", "--mode", "eval", "--eval_n", "50000"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "eval",
+            "type": "python",
+            "request": "launch",
+            "module": "torch.distributed.run",
+            "args": [
+                "--nproc_per_node=1",
+                "--rdzv_backend=c10d",
+                "--rdzv_endpoint=localhost:0",
+                "train.py",
+                "--config",
+                // "configs/AutoNAT_L_1.yaml",
+                // "output/grid_2x2_fromscratch/AutoNAT_L_1.yaml",
+                // "configs/AutoNAT_L_2.yaml",
+                "output/checkerboard_finetune/AutoNAT_L_2.yaml",
+                "--gen_steps",
+                "8",
+                "--searched_strategy",
+                "configs/AutoNAT_L-T8_strategy.yaml",
+                "--pretrained_path",
+                // "assets/nnet_ema.pth",
+                // "output/train1/ckpts/2000.ckpt/nnet_ema.pth",
+                // "output/grid_2x2_fromscratch/ckpts/130000.ckpt/nnet_ema.pth",
+                // "output/grid_2x2_finetune/ckpts/3000.ckpt/nnet_ema.pth",
+                // "output/train2/ckpts/11000.ckpt/nnet_ema.pth",
+                "output/checkerboard_finetune/ckpts/15000.ckpt/nnet_ema.pth",
+                "--mode",
+                "eval",
+                "--eval_n",
+                "5000",
+            ],
+            "env": {
+                "ACCELERATE_MIXED_PRECISION": "fp16",
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "train",
+            "type": "python",
+            "request": "launch",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "module": "torch.distributed.run",
+            "args": [
+                "--nproc_per_node=1",
+                "--rdzv_backend=c10d",
+                "--rdzv_endpoint=localhost:0",
+                "train.py",
+                "--config",
+                "configs/AutoNAT_L_2.yaml",
+                "--mode",
+                "pretrain",
+                "--debug",
+                "--output_dir",
+                "output/debug",
+                "--beta_alpha_beta",
+                "12",
+                "3",
+                "--resume"
+                
+            ],
+            "env": {
+                "ACCELERATE_MIXED_PRECISION": "fp16",
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

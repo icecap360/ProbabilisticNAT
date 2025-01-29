@@ -3,7 +3,7 @@ train:
   batch_size: 2048
   log_interval: 50
   save_interval: 1000
-  accumulation_steps: 32
+  accumulation_steps: 2
 optimizer:
   name: 'adamw'
   lr: 0.0004
@@ -15,8 +15,8 @@ lr_scheduler:
 nnet:
   img_size: 16
   codebook_size: 1024
-  embed_dim: 768
-  depth: 24
+  embed_dim: 512
+  depth: 12
   num_heads: 8
   mlp_ratio: 4
   qkv_bias: False
@@ -32,4 +32,5 @@ dataset:
   cfg: True
   p_uncond: 0.15
 exp_name: probnat
-sampling_type: improvednat
+sampling_type: checkerboard
+resume_path: 'assets/nnet_ema.pth'
