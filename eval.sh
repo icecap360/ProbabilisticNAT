@@ -1,0 +1,2 @@
+#!/bin/bash
+torch.distributed.run --nproc_per_node=1 --rdzv_backend=c10d --rdzv_endpoint=localhost:0 train.py --config configs/AutoNAT_L.yaml --gen_steps 8 --searched_strategy configs/AutoNAT_L-T8_strategy.yaml --pretrained_path assets/nnet_ema.pth --mode eval --eval_n 5000
