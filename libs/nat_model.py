@@ -182,6 +182,8 @@ class UViT(nn.Module):
         codebook_size=1024,
         args=None,
         num_classes=None,
+        use_context=True,
+        classifier=False,
     ):
         super().__init__()
         logger.debug(f"codebook size in nnet: {codebook_size}")
@@ -204,15 +206,23 @@ class UViT(nn.Module):
         print(f"num vis tokens: {self.num_vis_tokens}")
         self.txt_encoder = None
         self.args = args
+        self.classifier = classifier
+        if classifier:
+            self.class_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         # conditioning
-        self.extras = 1
-        self.context_embed = BertEmbeddings(
-            vocab_size=num_classes,
-            hidden_size=embed_dim,
-            max_position_embeddings=1,
-            dropout=0,
-        )
+        self.use_context = use_context
+        if use_context:
+            self.extras = 1
+            self.context_embed = BertEmbeddings(
+                vocab_size=num_classes,
+                hidden_size=embed_dim,
+                max_position_embeddings=1,
+                dropout=0,
+            )
+        else:
+            self.extras = 0
+            self.context_embed = None
 
         self.in_blocks = nn.ModuleList(
             [
@@ -279,9 +289,11 @@ class UViT(nn.Module):
         assert len(masked_ids.shape) == 2
         x = self.token_emb(masked_ids)
 
-        context_token = self.context_embed(context)
-        x = torch.cat((context_token, x), dim=1)
-
+        if self.use_context:
+            context_token = self.context_embed(context)
+            x = torch.cat((context_token, x), dim=1)
+        if self.classifier:
+            x = torch.cat((x, self.class_token.expand(x.shape[0], -1, -1)), dim=1)
         if self.skip:
             skips = []
         for blk in self.in_blocks:
@@ -302,4 +314,6 @@ class UViT(nn.Module):
         word_embeddings = self.token_emb.word_embeddings.weight.data.detach()
         x = self.mlm_layer(x, word_embeddings)
         x = x[:, self.extras :, : self.codebook_size]
+        if self.classifier:
+            return x[:, -1, : self.codebook_size]
         return x
